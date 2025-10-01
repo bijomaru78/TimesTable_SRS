@@ -1,0 +1,934 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Times Tables SRS</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --ink:#e8ecf1; --muted:#a7b0bd; --accent:#58a6ff; --good:#2ea043; --bad:#f85149; --warn:#d29922;
+    --shadow:0 8px 30px rgba(0,0,0,.35);
+  }
+  @media (prefers-color-scheme: light){
+    :root{ --bg:#f6f8fa; --panel:#ffffff; --ink:#0a0c10; --muted:#5a646f; --accent:#0969da; --good:#1a7f37; --bad:#d1242f; --warn:#9a6700;
+           --shadow:0 8px 24px rgba(0,0,0,.12); }
+  }
+  *{box-sizing:border-box}
+  body{margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif; background:var(--bg); color:var(--ink)}
+  .wrap{max-width:980px; margin:32px auto; padding:16px}
+  .card{background:var(--panel); border:1px solid #00000014; border-radius:14px; padding:18px; box-shadow:var(--shadow)}
+  h1{margin:0 0 8px; font-size:24px}
+  .row{display:flex; gap:12px; flex-wrap:wrap; align-items:center}
+  .row + .row{margin-top:12px}
+  label{font-size:14px; color:var(--muted)}
+  select, input[type="number"], input[type="text"], textarea{
+    background:#12141a10; border:1px solid #00000022; color:var(--ink); padding:10px 12px; border-radius:10px; outline:none;
+  }
+  select:focus, input:focus, textarea:focus{border-color:var(--accent)}
+  button{
+    border:1px solid #00000020; background:var(--accent); color:white; padding:10px 14px; border-radius:10px; cursor:pointer; font-weight:600;
+    transition:transform .06s ease;
+  }
+  button:active{transform:scale(.98)}
+  button.ghost{background:transparent; color:var(--accent)}
+  button.good{background:var(--good)}
+  button.bad{background:var(--bad)}
+  button.warn{background:var(--warn)}
+  button:disabled{opacity:.6; cursor:not-allowed}
+  .pill{display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; font-size:12px; border:1px solid #00000020}
+  .pill.timer{font-weight:700}
+  .pill.timer.warn{background:linear-gradient(90deg, #d2992222, transparent)}
+  .pill.timer.crit{background:linear-gradient(90deg, #f8514922, transparent)}
+  .stat{display:grid; grid-template-columns:repeat(4,1fr); gap:8px}
+  .stat .card{padding:12px}
+  .bigQ{font-size:56px; font-weight:800; letter-spacing:.5px; text-align:center; margin:10px 0 6px}
+  .answerRow{display:flex; gap:10px; justify-content:center; align-items:center}
+  .answerRow input{font-size:28px; text-align:center; width:160px}
+  .kbd{display:grid; grid-template-columns:repeat(3,70px); gap:8px; justify-content:center; margin-top:10px}
+  .kbd button{font-size:20px; padding:12px 0}
+  .sep{height:1px; background:#0000001a; margin:14px 0}
+  .hint{font-size:13px; color:var(--muted)}
+  .flex{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+  .grow{flex:1}
+  textarea{width:100%; min-height:120px; resize:vertical}
+  .tag{padding:4px 8px; border-radius:8px; border:1px solid #0000002a; font-size:12px}
+  .center{text-align:center}
+  .choices{display:flex; gap:10px; justify-content:center; margin-top:10px; flex-wrap:wrap}
+  .choices button{min-width:110px; font-size:20px; padding:12px 16px}
+
+  /* Simple modal */
+  .modal{position:fixed; inset:0; display:none; align-items:center; justify-content:center; padding:20px; background:rgba(0,0,0,.5); z-index:50}
+  .modal .sheet{max-width:980px; width:100%; max-height:85vh; overflow:auto}
+  table{width:100%; border-collapse:collapse; font-size:14px}
+  th, td{padding:8px 10px; border-bottom:1px solid #00000014}
+  th{position:sticky; top:0; background:var(--panel); text-align:left}
+  tr.badrow td{background:linear-gradient(90deg, #f8514918, transparent)}
+  .right{text-align:right}
+
+  /* Flash effect for showing the correct choice */
+  @keyframes flashPulse {
+    0% { box-shadow: 0 0 0 0 rgba(46,160,67, .5); }
+    100%{ box-shadow: 0 0 0 12px rgba(46,160,67, 0); }
+  }
+  .flash-correct{
+    animation: flashPulse .35s ease-out 2;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="row" style="justify-content:space-between; align-items:flex-end">
+    <div>
+      <h1>Times Tables SRS</h1>
+      <div class="hint">Spaced repetition for 10×10 or 12×12. Progress auto-saves in this browser.</div>
+    </div>
+    <div class="flex">
+      <label>Table</label>
+      <select id="tableSize">
+        <option value="10">10 × 10</option>
+        <option value="12" selected>12 × 12</option>
+      </select>
+
+      <label>Mode</label>
+      <select id="modeSelect" title="Typing or Multiple Choice">
+        <option value="typing" selected>Typing</option>
+        <option value="mc">Multiple choice</option>
+      </select>
+
+      <label>Timer</label>
+      <select id="timerSelect" title="Per-question time limit">
+        <option value="off">Off</option>
+        <option value="5">5s</option>
+        <option value="10">10s</option>
+      </select>
+
+      <button id="startBtn">Start / Continue</button>
+    </div>
+  </div>
+
+  <div class="sep"></div>
+
+  <div class="row stat">
+    <div class="card center">
+      <div class="pill">Due now</div>
+      <div id="dueNow" style="font-size:24px; font-weight:700; margin-top:6px">–</div>
+    </div>
+    <div class="card center">
+      <div class="pill">Answered today</div>
+      <div id="ansToday" style="font-size:24px; font-weight:700; margin-top:6px">–</div>
+    </div>
+    <div class="card center">
+      <div class="pill">Correct rate</div>
+      <div id="accRate" style="font-size:24px; font-weight:700; margin-top:6px">–</div>
+    </div>
+    <div class="card center">
+      <div class="pill">Next due</div>
+      <div id="nextDueIn" style="font-size:24px; font-weight:700; margin-top:6px">–</div>
+    </div>
+  </div>
+
+  <div class="sep"></div>
+
+  <div class="card" id="quizCard" style="display:none">
+    <div class="row" style="justify-content:space-between; align-items:center">
+      <div class="tag" id="factMeta">streak – • ease – • interval –</div>
+      <div class="flex">
+        <div class="pill timer" id="timerPill" style="display:none; margin-right:6px">⏱</div>
+        <button class="ghost" id="pauseBtn" title="Pause/Resume the timer and inputs">Pause</button>
+        <button class="ghost" id="stopBtn"  title="End session without grading current card">Stop</button>
+      </div>
+    </div>
+
+    <div class="bigQ" id="question">3 × 7 = ?</div>
+
+    <!-- Typing mode -->
+    <div class="answerRow" id="typingRow">
+      <input id="answerInput" type="number" inputmode="numeric" placeholder="Your answer" />
+      <button id="submitBtn">Check</button>
+      <button class="ghost" id="dontKnowBtn" title="Mark wrong and reschedule sooner">I don't know</button>
+    </div>
+    <div class="kbd" id="keypad">
+      <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button>
+      <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button>
+      <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button>
+      <button data-k="←">←</button><button data-k="0">0</button><button data-k="⏎">⏎</button>
+    </div>
+
+    <!-- Multiple-choice mode -->
+    <div class="choices" id="choicesRow" style="display:none"></div>
+  </div>
+
+  <div class="card" id="doneCard" style="display:none">
+    <div class="row" style="justify-content:center">
+      <div class="bigQ">🎉 All caught up!</div>
+    </div>
+    <div class="center hint">No cards are due. You can still practise the nearest-due item with “Practice anyway”.</div>
+    <div class="row" style="justify-content:center; margin-top:10px">
+      <button id="practiceAnywayBtn" class="ghost">Practice anyway</button>
+    </div>
+  </div>
+
+  <div class="sep"></div>
+
+  <div class="row card">
+    <div class="grow">
+      <div class="flex">
+        <button id="dailyReportBtn" class="ghost">Daily report</button>
+        <button id="deckReportBtn" class="ghost">Deck report</button>
+        <span class="grow"></span>
+        <button id="resetBtn" class="warn">Reset deck</button>
+        <button id="exportBtn" class="ghost">Export</button>
+        <button id="importBtn" class="ghost">Import</button>
+      </div>
+      <div id="ioBox" style="display:none; margin-top:12px">
+        <textarea id="ioText" placeholder="Exported JSON will appear here, or paste JSON here to import."></textarea>
+        <div class="flex" style="margin-top:8px; justify-content:flex-end">
+          <button id="ioClose" class="ghost">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- DAILY REPORT MODAL -->
+<div class="modal" id="dailyModal">
+  <div class="sheet card">
+    <div class="row" style="justify-content:space-between; align-items:center">
+      <h2 style="margin:0">Daily report</h2>
+      <button class="ghost" id="closeDaily">Close</button>
+    </div>
+    <div class="hint" style="margin-top:6px">Wrong answers given today and their frequencies.</div>
+    <div id="dailySummary" class="row" style="margin:10px 0"></div>
+    <div class="sep"></div>
+    <h3 style="margin:10px 0 6px">Mistakes today</h3>
+    <div style="overflow:auto">
+      <table id="mistakesTable">
+        <thead><tr><th>Time</th><th>Question</th><th>Your answer</th><th>Correct</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- DECK REPORT MODAL -->
+<div class="modal" id="deckModal">
+  <div class="sheet card">
+    <div class="row" style="justify-content:space-between; align-items:center">
+      <h2 style="margin:0">Deck report</h2>
+      <button class="ghost" id="closeDeck">Close</button>
+    </div>
+    <div class="hint" style="margin-top:6px">Per-combination stats (click headers to sort).</div>
+    <div style="overflow:auto; margin-top:8px">
+      <table id="deckTable">
+        <thead>
+          <tr>
+            <th data-k="q">a×b</th>
+            <th data-k="streak">streak</th>
+            <th data-k="ease">ease</th>
+            <th data-k="interval">interval</th>
+            <th data-k="due">due in</th>
+            <th data-k="seen">seen</th>
+            <th data-k="tc">✓ total</th>
+            <th data-k="tw">✗ total</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ======================================================
+   Times-Table SRS + First-Pass + Timer + Pause + MC Mode
+   + Audio feedback and correct flash in MC mode
+   ======================================================
+   - Facts: a,b,dueDay,streak,ease,interval,timesSeen,totalCorrect,totalWrong,lastDay
+   - First run: shuffled queue asks every combo once.
+   - Modes: typing or multiple-choice (3 options, 1 correct + 2 plausible).
+   - Timer: Off / 5s / 10s per question; timeout counts as wrong.
+   - Pause: freezes timer and disables inputs. Stop: end session without grading.
+*/
+
+const LS_KEY = 'ttsrs-v5';
+
+const state = {
+  size: 12,
+  facts: [],
+  firstPassQueue: [],
+  stats: {
+    lastDay: daySerial(),
+    answeredToday: 0,
+    correctToday: 0,
+    totalAnswered: 0,
+    totalCorrect: 0,
+    badAnswersToday: {}, // {valueOrTimeout: count}
+    logsToday: []        // [{ts,a,b,correct,answer,correctAns,reason?}]
+  },
+  settings: { mode:'typing', timer:'off' }, // timer: 'off'|'5'|'10'
+  ui: { currentIndex: -1, practicingAnyway: false, paused:false }
+};
+
+// --- Audio (Web Audio API) ---
+let audioCtx = null;
+function ensureAudio(){
+  if (!audioCtx){
+    const AC = window.AudioContext || window.webkitAudioContext;
+    audioCtx = new AC();
+  }
+}
+function beep({freq=440, dur=0.12, type='sine', gain=0.08}={}){
+  ensureAudio();
+  const t0 = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.value = freq;
+  g.gain.setValueAtTime(0, t0);
+  g.gain.linearRampToValueAtTime(gain, t0+0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+  osc.connect(g).connect(audioCtx.destination);
+  osc.start(t0);
+  osc.stop(t0 + dur + 0.02);
+}
+// pleasant correct: two quick notes
+function playCorrectChime(){
+  ensureAudio();
+  const t = audioCtx.currentTime;
+  const seq = [
+    {freq: 880,  t: t,      dur:0.10, type:'sine', gain:0.08},
+    {freq: 1175, t: t+0.10, dur:0.12, type:'sine', gain:0.08},
+  ];
+  seq.forEach(n=>{
+    const osc = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    osc.type = n.type;
+    osc.frequency.value = n.freq;
+    g.gain.setValueAtTime(0, n.t);
+    g.gain.linearRampToValueAtTime(n.gain, n.t+0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, n.t+n.dur);
+    osc.connect(g).connect(audioCtx.destination);
+    osc.start(n.t);
+    osc.stop(n.t + n.dur + 0.02);
+  });
+}
+// wrong buzz
+function playWrongBuzz(){
+  ensureAudio();
+  // two short low buzzes
+  beep({freq:220, dur:0.09, type:'square', gain:0.08});
+  setTimeout(()=> beep({freq:196, dur:0.09, type:'square', gain:0.07}), 80);
+}
+
+// --- Timer handling ---
+let timerId = null;
+let timeLeft = 0;
+
+function timerSeconds(){
+  if (state.settings.timer === '5')  return 5;
+  if (state.settings.timer === '10') return 10;
+  return 0; // off
+}
+function startTimer(){
+  clearTimer();
+  const secs = timerSeconds();
+  if (!secs){ setTimerPillVisible(false); return; }
+  timeLeft = secs;
+  updateTimerPill();
+  setTimerPillVisible(true);
+  timerId = setInterval(()=>{
+    if (state.ui.paused) return; // frozen
+    timeLeft--;
+    updateTimerPill();
+    if (timeLeft <= 0){
+      clearTimer();
+      updateSRS(false, '⏱ timeout', 'timeout');
+      playWrongBuzz();
+      setTimeout(()=>{ step(); }, 250);
+    }
+  }, 1000);
+}
+function clearTimer(){
+  if (timerId){ clearInterval(timerId); timerId = null; }
+  setTimerPillVisible(false);
+}
+function setTimerPillVisible(v){
+  const pill = document.getElementById('timerPill');
+  pill.style.display = v ? '' : 'none';
+  if (!v){ pill.classList.remove('warn','crit'); }
+}
+function updateTimerPill(){
+  const pill = document.getElementById('timerPill');
+  pill.textContent = `⏱ ${timeLeft}s`;
+  pill.classList.toggle('warn', timeLeft === 3 || timeLeft === 2);
+  pill.classList.toggle('crit', timeLeft <= 1);
+}
+
+// --- Utils ---
+function daySerial(){ return Math.floor(Date.now()/86400000); }
+function save(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+function load(){
+  const raw = localStorage.getItem(LS_KEY);
+  if(!raw) return false;
+  try{
+    const obj = JSON.parse(raw);
+    if (!obj || !Array.isArray(obj.facts)) return false;
+    obj.firstPassQueue ??= [];
+    obj.stats.badAnswersToday ??= {};
+    obj.stats.logsToday ??= [];
+    obj.settings ??= {mode:'typing', timer:'off'};
+    obj.facts.forEach(f=>{
+      f.timesSeen ??= 0;
+      f.totalCorrect ??= 0;
+      f.totalWrong ??= 0;
+      f.lastDay ??= null;
+      f.interval ??= 1;
+      f.ease ??= 2.5;
+    });
+    Object.assign(state, obj);
+    return true;
+  }catch(e){ console.warn('Load failed', e); return false; }
+}
+function resetDeck(size){
+  state.size = size;
+  state.facts = [];
+  const today = daySerial();
+  for(let a=1;a<=size;a++){
+    for(let b=1;b<=size;b++){
+      state.facts.push({a,b, dueDay: today, streak:0, ease:2.5, interval:1,
+                        timesSeen:0, totalCorrect:0, totalWrong:0, lastDay:null});
+    }
+  }
+  state.firstPassQueue = Array.from(state.facts.keys());
+  shuffleInPlace(state.firstPassQueue);
+
+  state.stats = { lastDay: today, answeredToday:0, correctToday:0,
+                  totalAnswered:0, totalCorrect:0, badAnswersToday:{}, logsToday:[] };
+  state.ui.currentIndex = -1;
+  state.ui.practicingAnyway = false;
+  state.ui.paused = false;
+  save();
+}
+function shuffleInPlace(arr){
+  for(let i=arr.length-1;i>0;i--){
+    const j = (Math.random()* (i+1))|0;
+    [arr[i],arr[j]] = [arr[j],arr[i]];
+  }
+}
+function ensureDayRollover(){
+  const today = daySerial();
+  if (state.stats.lastDay !== today){
+    state.stats.lastDay = today;
+    state.stats.answeredToday = 0;
+    state.stats.correctToday = 0;
+    state.stats.badAnswersToday = {};
+    state.stats.logsToday = [];
+    save();
+  }
+}
+function pickNext(dueOnly=true){
+  const today = daySerial();
+
+  // Prefer first-pass queue (ensures each combo appears once)
+  while (state.firstPassQueue.length){
+    const idx = state.firstPassQueue[0];
+    const f = state.facts[idx];
+    if (!dueOnly || f.dueDay <= today){
+      return idx;
+    } else {
+      break;
+    }
+  }
+
+  // Normal SRS: smallest dueDay among due items (or any if dueOnly=false)
+  let bestIdx = -1, bestDue = Number.POSITIVE_INFINITY;
+  state.facts.forEach((f, i)=>{
+    if ((dueOnly ? f.dueDay <= today : true)){
+      if (f.dueDay < bestDue){ bestDue = f.dueDay; bestIdx = i; }
+    }
+  });
+  return bestIdx;
+}
+function accuracyStr(){
+  const t = state.stats.answeredToday || 0;
+  const c = state.stats.correctToday || 0;
+  if (t === 0) return '–';
+  return Math.round(100*c/t) + '%';
+}
+function nextDueInStr(){
+  const today = daySerial();
+  const idx = pickNext(false);
+  if (idx < 0) return '–';
+  const delta = state.facts[idx].dueDay - today;
+  if (delta <= 0) return 'now';
+  if (delta === 1) return '1 day';
+  return delta + ' days';
+}
+function countDue(){
+  const today = daySerial();
+  return state.facts.reduce((n,f)=> n + (f.dueDay <= today ? 1 : 0), 0);
+}
+function renderStats(){
+  document.getElementById('dueNow').textContent = countDue();
+  document.getElementById('ansToday').textContent = state.stats.answeredToday || 0;
+  document.getElementById('accRate').textContent = accuracyStr();
+  document.getElementById('nextDueIn').textContent = nextDueInStr();
+}
+
+function updateDoneCardMessage(){
+  const n = countDue(); // how many are due now (dueDay <= today)
+  const titleEl = document.querySelector('#doneCard .bigQ');
+  const hintEl  = document.querySelector('#doneCard .center.hint');
+
+  if (n > 0){
+    titleEl.textContent = 'Items still due today';
+    hintEl.textContent  = `${n} card${n!==1?'s':''} remaining due now. Press “Start / Continue” to resume or “Practice anyway” to drill one.`;
+  } else {
+    titleEl.textContent = '🎉 All caught up!';
+    hintEl.textContent  = 'No cards are due. You can still practise the nearest-due item with “Practice anyway”.';
+  }
+}
+
+
+function setPaused(p){
+  state.ui.paused = p;
+  document.getElementById('pauseBtn').textContent = p ? 'Resume' : 'Pause';
+  const inp = document.getElementById('answerInput');
+  const sub = document.getElementById('submitBtn');
+  const idk = document.getElementById('dontKnowBtn');
+  if (inp) inp.disabled = p;
+  if (sub) sub.disabled = p;
+  if (idk) idk.disabled = p;
+  document.querySelectorAll('#keypad button').forEach(b=> b.disabled = p);
+  document.querySelectorAll('#choicesRow button').forEach(b=> b.disabled = p);
+}
+
+function showCard(idx){
+  clearTimer();
+  setPaused(false);
+  state.ui.currentIndex = idx;
+  const f = state.facts[idx];
+
+  document.getElementById('question').textContent = `${f.a} × ${f.b} = ?`;
+  document.getElementById('factMeta').textContent =
+    `streak ${f.streak} • ease ${f.ease.toFixed(2)} • interval ${f.interval}d`;
+
+  if (state.settings.mode === 'typing'){
+    document.getElementById('typingRow').style.display = '';
+    document.getElementById('keypad').style.display   = '';
+    document.getElementById('choicesRow').style.display = 'none';
+    const input = document.getElementById('answerInput');
+    input.value = '';
+    input.disabled = false;
+    input.focus();
+  } else {
+    document.getElementById('typingRow').style.display = 'none';
+    document.getElementById('keypad').style.display   = 'none';
+    document.getElementById('choicesRow').style.display = '';
+    buildChoices(f.a, f.b, state.size);
+  }
+
+  startTimer();
+}
+
+function plausibleDistractors(a,b,size){
+  const correct = a*b;
+  const set = new Set([correct]);
+  const cand = [];
+  if (a>1) cand.push((a-1)*b);
+  if (a<size) cand.push((a+1)*b);
+  if (b>1) cand.push(a*(b-1));
+  if (b<size) cand.push(a*(b+1));
+  cand.push(correct-1, correct+1, correct-2, correct+2);
+  const filtered = cand.filter(x=> Number.isInteger(x) && x>0 && x <= (size*size));
+  const out = [];
+  shuffleInPlace(filtered);
+  for (const v of filtered){
+    if (!set.has(v)){ set.add(v); out.push(v); if (out.length===2) break; }
+  }
+  let d = 1;
+  while (out.length<2){
+    const opts = [correct+d, correct-d].filter(x=> x>0);
+    for (const v of opts){
+      if (!set.has(v)){ set.add(v); out.push(v); if (out.length===2) break; }
+    }
+    d++; if (d>5) break;
+  }
+  return out.slice(0,2);
+}
+function buildChoices(a,b,size){
+  const correct = a*b;
+  const dists = plausibleDistractors(a,b,size);
+  const options = [correct, ...dists];
+  shuffleInPlace(options);
+  const row = document.getElementById('choicesRow');
+  row.innerHTML = '';
+  options.forEach(val=>{
+    const btn = document.createElement('button');
+    btn.textContent = val;
+    btn.dataset.val = val;
+    btn.dataset.correct = (val===correct).toString();
+    btn.onclick = ()=>{
+	  if (state.ui.paused) return;
+	  clearTimer(); // ⟵ stop countdown while we show the reveal
+	  const pickedVal = +btn.dataset.val;
+	  const isCorrect = (pickedVal === correct);
+      // Audio + flashes
+      if (isCorrect){
+        playCorrectChime();
+        btn.classList.add('good');
+        setTimeout(()=> btn.classList.remove('good'), 220);
+		} else {
+		  playWrongBuzz();
+		  btn.classList.add('bad');
+		  // leave the red state on; no quick remove
+
+		  const correctBtn = Array.from(row.querySelectorAll('button'))
+			.find(b => b.dataset.correct === 'true');
+		  if (correctBtn){
+			correctBtn.classList.add('good','flash-correct');
+			// keep highlight for the whole 5s reveal; remove after we advance
+			setTimeout(()=> correctBtn.classList.remove('good','flash-correct'), 5000);
+		  }
+
+		  // lock inputs during reveal
+		  row.querySelectorAll('button').forEach(b => b.disabled = true);
+		  document.getElementById('pauseBtn').disabled = true;
+		  document.getElementById('stopBtn').disabled  = true;
+		}
+			
+      // Grade & move on
+		updateSRS(isCorrect, pickedVal);
+		setTimeout(()=> {
+		  // re-enable controls before next card
+		  document.getElementById('pauseBtn').disabled = false;
+		  document.getElementById('stopBtn').disabled  = false;
+		  step();
+		}, isCorrect ? 320 : 3000);
+
+    };
+    row.appendChild(btn);
+  });
+}
+
+function flashSubmit(correct){
+  const btn = document.getElementById('submitBtn');
+  const oldText = btn.textContent;
+  if (correct) playCorrectChime(); else playWrongBuzz();
+  btn.textContent = correct ? '✓' : '✗';
+  btn.classList.add(correct ? 'good' : 'bad');
+  setTimeout(()=>{ btn.textContent = oldText; btn.classList.remove('good','bad'); }, 220);
+}
+
+function logToday(a,b,correct,answer,correctAns,reason){
+  const ts = new Date().toLocaleTimeString();
+  state.stats.logsToday.push({ts,a,b,correct,answer,correctAns,reason});
+  if (!correct){
+    const key = reason === 'timeout' ? '⏱ timeout' : String(answer);
+    state.stats.badAnswersToday[key] = (state.stats.badAnswersToday[key]||0)+1;
+  }
+}
+
+function updateSRS(correct, givenVal, reason){
+  const idx = state.ui.currentIndex;
+  if (idx < 0) return;
+  const f = state.facts[idx];
+  const today = daySerial();
+
+  if (state.firstPassQueue.length && state.firstPassQueue[0] === idx){
+    state.firstPassQueue.shift();
+  }
+
+  f.timesSeen += 1;
+  f.lastDay = today;
+
+  if (correct){
+    f.streak += 1;
+    if (f.streak === 1)      f.interval = 1;
+    else if (f.streak === 2) f.interval = 6;
+    else                     f.interval = Math.max(1, Math.round(f.interval * f.ease));
+    f.ease = Math.min(3.0, +(f.ease + 0.05).toFixed(2));
+    f.dueDay = today + f.interval;
+    f.totalCorrect += 1;
+  } else {
+    f.streak = 0;
+    f.ease = Math.max(1.3, +(f.ease - 0.20).toFixed(2));
+    f.interval = 1;
+    f.dueDay = today; // show again today
+    f.totalWrong += 1;
+  }
+
+  state.stats.answeredToday += 1;
+  state.stats.totalAnswered += 1;
+  if (correct){ state.stats.correctToday += 1; state.stats.totalCorrect += 1; }
+
+  logToday(f.a, f.b, correct, givenVal, f.a*f.b, reason);
+  save();
+}
+
+function step(){
+  ensureDayRollover();
+  renderStats();
+
+	// keep looping until no due items remain
+	let idx = pickNext(true);
+	if (idx < 0 && countDue() > 0) {
+	  // still cards due, but maybe just graded one — force another pick
+	  idx = state.facts.findIndex(f => f.dueDay <= daySerial());
+	}
+
+  const quizCard = document.getElementById('quizCard');
+  const doneCard = document.getElementById('doneCard');
+
+  if (idx >= 0){
+    state.ui.practicingAnyway = false;
+    quizCard.style.display = '';
+    doneCard.style.display = 'none';
+    showCard(idx);
+	} else {
+	  clearTimer();
+	  updateDoneCardMessage(); // ← add this
+	  document.getElementById('quizCard').style.display = 'none';
+	  document.getElementById('doneCard').style.display = '';
+	}
+
+}
+
+// --- Reports ---
+function openDailyReport(){
+  const sumDiv = document.getElementById('dailySummary');
+  sumDiv.innerHTML = '';
+  const entries = Object.entries(state.stats.badAnswersToday).sort((a,b)=>b[1]-a[1]);
+  if (!entries.length){
+    sumDiv.innerHTML = '<div class="hint">No mistakes today — nice!</div>';
+  } else {
+    entries.forEach(([val,count])=>{
+      const el = document.createElement('div');
+      el.className = 'pill';
+      el.textContent = `“${val}” × ${count}`;
+      sumDiv.appendChild(el);
+    });
+  }
+
+  const tbody = document.querySelector('#mistakesTable tbody');
+  tbody.innerHTML = '';
+  state.stats.logsToday.forEach(log=>{
+    if (log.correct) return;
+    const prettyAns = (log.reason === 'timeout') ? '⏱ timeout' : log.answer;
+    const tr = document.createElement('tr');
+    tr.className = 'badrow';
+    tr.innerHTML = `<td>${log.ts}</td>
+                    <td>${log.a} × ${log.b}</td>
+                    <td class="right">${prettyAns}</td>
+                    <td class="right">${log.correctAns}</td>`;
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById('dailyModal').style.display = 'flex';
+}
+function daysUntil(dueDay){ return dueDay - daySerial(); }
+function openDeckReport(sortKey='q', asc=true){
+  const tbody = document.querySelector('#deckTable tbody');
+  const rows = state.facts.map((f,i)=>({
+    i, q: `${f.a}×${f.b}`,
+    a: f.a, b: f.b,
+    streak: f.streak,
+    ease: +f.ease.toFixed(2),
+    interval: f.interval,
+    due: daysUntil(f.dueDay),
+    seen: f.timesSeen,
+    tc: f.totalCorrect,
+    tw: f.totalWrong
+  }));
+
+  const cmp = (a,b,k)=>{
+    if (k==='q'){ if (a.a===b.a) return a.b - b.b; return a.a - b.a; }
+    return (a[k]===b[k]) ? 0 : (a[k] < b[k] ? -1 : 1);
+  };
+  rows.sort((a,b)=> asc ? cmp(a,b,sortKey) : -cmp(a,b,sortKey));
+
+  tbody.innerHTML = '';
+  rows.forEach(r=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${r.q}</td>
+                    <td class="right">${r.streak}</td>
+                    <td class="right">${r.ease.toFixed ? r.ease.toFixed(2) : r.ease}</td>
+                    <td class="right">${r.interval}</td>
+                    <td class="right">${r.due<=0?'now':r.due+'d'}</td>
+                    <td class="right">${r.seen}</td>
+                    <td class="right">${r.tc}</td>
+                    <td class="right">${r.tw}</td>`;
+    tbody.appendChild(tr);
+  });
+
+  const ths = document.querySelectorAll('#deckTable thead th');
+  ths.forEach(th=>{
+    th.onclick = ()=>{
+      const k = th.dataset.k || 'q';
+      const currentAsc = th.dataset.asc !== 'false'; // default true
+      ths.forEach(t=>{ delete t.dataset.asc; });
+      th.dataset.asc = (!currentAsc).toString();
+      openDeckReport(k, !currentAsc);
+    };
+  });
+
+  document.getElementById('deckModal').style.display = 'flex';
+}
+
+// --- UI wiring ---
+const qs = s => document.querySelector(s);
+
+document.getElementById('startBtn').addEventListener('click', ()=>{
+  const size = +document.getElementById('tableSize').value;
+  if (state.facts.length === 0 || state.size !== size){
+    if (state.facts.length && state.size !== size){
+      if (!confirm(`Rebuild deck for ${size}×${size}? This resets progress.`)) return;
+    }
+    resetDeck(size);
+  }
+  step();
+});
+
+// Typing submit
+document.getElementById('submitBtn').addEventListener('click', ()=>{
+  if (state.ui.paused) return;
+  const idx = state.ui.currentIndex;
+  if (idx < 0) return;
+  const f = state.facts[idx];
+  const val = +document.getElementById('answerInput').value;
+  clearTimer();
+  const correct = (val === f.a * f.b);
+  updateSRS(correct, val);
+  flashSubmit(correct);
+  setTimeout(()=>{ step(); }, 250);
+});
+
+// I don't know
+document.getElementById('dontKnowBtn').addEventListener('click', ()=>{
+  if (state.ui.paused) return;
+  clearTimer();
+  updateSRS(false, NaN);
+  playWrongBuzz();
+  step();
+});
+
+// On-screen keypad
+document.getElementById('keypad').addEventListener('click', (e)=>{
+  if (state.ui.paused) return;
+  const k = e.target?.dataset?.k;
+  if (!k) return;
+  const input = document.getElementById('answerInput');
+  if (k === '←'){
+    input.value = input.value.slice(0, -1);
+  } else if (k === '⏎'){
+    document.getElementById('submitBtn').click();
+  } else {
+    input.value += k;
+  }
+  input.focus();
+});
+
+// Enter key submits
+document.getElementById('answerInput').addEventListener('keydown', (e)=>{
+  if (e.key === 'Enter'){ document.getElementById('submitBtn').click(); }
+});
+
+// Pause / Resume
+document.getElementById('pauseBtn').addEventListener('click', ()=>{
+  // First user interaction may be needed to start audio on iOS
+  ensureAudio();
+  setPaused(!state.ui.paused);
+});
+
+// Stop session
+document.getElementById('stopBtn').addEventListener('click', ()=>{
+  clearTimer();
+  document.getElementById('quizCard').style.display = 'none';
+  updateDoneCardMessage(); // ← add this
+  document.getElementById('doneCard').style.display = '';
+});
+
+// Practice anyway
+document.getElementById('practiceAnywayBtn').addEventListener('click', ()=>{
+  const idx = pickNext(false);
+  if (idx >= 0){
+    state.ui.practicingAnyway = true;
+    document.getElementById('doneCard').style.display = 'none';
+    document.getElementById('quizCard').style.display = '';
+    showCard(idx);
+  }
+});
+
+// Reset / Export / Import
+document.getElementById('resetBtn').addEventListener('click', ()=>{
+  if (!confirm('Reset all progress and rebuild the deck?')) return;
+  clearTimer();
+  resetDeck(+document.getElementById('tableSize').value);
+  step();
+});
+const ioBox = document.getElementById('ioBox');
+const ioText = document.getElementById('ioText');
+document.getElementById('exportBtn').addEventListener('click', ()=>{
+  ioBox.style.display = '';
+  ioText.value = JSON.stringify(state);
+  ioText.select();
+});
+document.getElementById('importBtn').addEventListener('click', ()=>{
+  ioBox.style.display = '';
+  ioText.value = '';
+  ioText.placeholder = 'Paste exported JSON here, then press OK in the next prompt.';
+  setTimeout(()=>{
+    if (!confirm('Import the JSON currently in the box? This will overwrite progress.')) return;
+    try{
+      const obj = JSON.parse(ioText.value);
+      if (!obj || !Array.isArray(obj.facts)) throw new Error('Invalid JSON');
+      localStorage.setItem(LS_KEY, JSON.stringify(obj));
+      load();
+      alert('Imported. Reloading the session.');
+      step();
+    }catch(e){
+      alert('Import failed: ' + e.message);
+    }
+  }, 50);
+});
+document.getElementById('ioClose').addEventListener('click', ()=> ioBox.style.display = 'none');
+
+// Reports open/close
+document.getElementById('dailyReportBtn').addEventListener('click', openDailyReport);
+document.getElementById('deckReportBtn').addEventListener('click', ()=>openDeckReport('q', true));
+document.getElementById('closeDaily').addEventListener('click', ()=> document.getElementById('dailyModal').style.display='none');
+document.getElementById('closeDeck').addEventListener('click', ()=> document.getElementById('deckModal').style.display='none');
+document.getElementById('dailyModal').addEventListener('click', (e)=>{ if(e.target.id==='dailyModal') e.currentTarget.style.display='none'; });
+document.getElementById('deckModal').addEventListener('click', (e)=>{ if(e.target.id==='deckModal') e.currentTarget.style.display='none'; });
+
+// Settings selectors
+const modeSelect  = document.getElementById('modeSelect');
+const timerSelect = document.getElementById('timerSelect');
+modeSelect.addEventListener('change', ()=>{
+  state.settings.mode = modeSelect.value;
+  save();
+  if (document.getElementById('quizCard').style.display !== 'none' && state.ui.currentIndex>=0){
+    showCard(state.ui.currentIndex); // rebuild inputs/choices
+  }
+});
+timerSelect.addEventListener('change', ()=>{
+  state.settings.timer = timerSelect.value;
+  save();
+  if (document.getElementById('quizCard').style.display !== 'none'){
+    startTimer();
+  }
+});
+
+// --- Boot ---
+(function init(){
+  const loaded = load();
+  if (!loaded) resetDeck(+document.getElementById('tableSize').value);
+  ensureDayRollover();
+  renderStats();
+  // reflect settings
+  modeSelect.value  = state.settings.mode || 'typing';
+  timerSelect.value = state.settings.timer || 'off';
+})();
+</script>
+</body>
+</html>
